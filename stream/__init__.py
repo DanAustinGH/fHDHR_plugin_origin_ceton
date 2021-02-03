@@ -29,9 +29,9 @@ class Plugin_OBJ():
             time.sleep(5)
             return self.open_socket(port)
 
-    def direct_stream(self, instance, port):
+    def get(self):
         self.plugin_utils.logger.info('Attempting to direct stream...')
-        sock = self.open_socket(port)
+        sock = self.open_socket(self.stream_args["stream_info"]["port"])
 
 
         def generate():

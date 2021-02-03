@@ -186,15 +186,14 @@ class Plugin_OBJ():
 
         if tuned:
             self.plugin_utils.logger.info('Initiate streaming channel %s from Ceton tuner#: %s ' % (chandict['origin_number'], instance))
-            if self.stream_method == "ffmpeg": 
-                streamurl = "udp://127.0.0.1:%s" % port
-            else:
-                streamurl = "udp://127.0.0.1:%s" % port
-                self.plugin_utils.origin["ceton"]["alt_stream"].direct_stream(instance, port)
+            streamurl = "udp://127.0.0.1:%s" % port
         else:
             streamurl = None
 
-        stream_info = {"url": streamurl}
+        if self.stream_method == "direct": 
+            stream_info = {"url": streamurl, "port": port}
+        else: 
+            stream_info = {"url": streamurl}
 
         return stream_info
 
