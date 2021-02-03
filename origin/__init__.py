@@ -190,7 +190,7 @@ class Plugin_OBJ():
         else:
             streamurl = None
 
-        if self.stream_method == "direct": 
+        if self.stream_method == "ceton_direct": 
             stream_info = {"url": streamurl, "port": port}
         else: 
             stream_info = {"url": streamurl}

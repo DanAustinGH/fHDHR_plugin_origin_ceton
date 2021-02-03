@@ -1,6 +1,7 @@
 import base64
 import re
 import socket
+import sys
 import time
 import xmltodict
 
@@ -9,7 +10,7 @@ from random import randint
 
 class Plugin_OBJ():
 
-    def __init__(self, plugin_utils, stream_args, tuner):
+    def __init__(self, fhdhr, plugin_utils, stream_args, tuner):
         self.fhdhr = fhdhr
         self.plugin_utils = plugin_utils
         self.stream_args = stream_args
@@ -29,6 +30,8 @@ class Plugin_OBJ():
             time.sleep(5)
             return self.open_socket(port)
 
+        return sock
+
     def get(self):
         self.plugin_utils.logger.info('Attempting to direct stream...')
         sock = self.open_socket(self.stream_args["stream_info"]["port"])
@@ -46,7 +49,7 @@ class Plugin_OBJ():
 
                     chunk = buf[header_size:]
                     chunk_size = int(sys.getsizeof(chunk))
-                    self.plugin_utils.logger.info("Passing Through Chunk #%s with size %s" % (chunk_counter, chunk_size))
+                    self.plugin_utils.logger.debug("Passing Through Chunk #%s with size %s" % (chunk_counter, chunk_size))
 
                     yield chunk
                     self.tuner.add_downloaded_size(chunk_size)
@@ -61,7 +64,9 @@ class Plugin_OBJ():
                 self.plugin_utils.logger.info("Connection Closed: %s" % e)
             finally:
                 self.plugin_utils.logger.info("Connection Closed: Tuner Lock Removed")
-                self.close_stream(instance, "")
+                if hasattr(self.fhdhr.origins.origins_dict[self.tuner.origin], "close_stream"):
+                    self.fhdhr.origins.origins_dict[self.tuner.origin].close_stream(self.tuner.number, self.stream_args)
+                self.tuner.close()
                 # raise TunerError("806 - Tune Failed")
 
         return generate()
