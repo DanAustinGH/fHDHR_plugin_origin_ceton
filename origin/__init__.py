@@ -1,5 +1,6 @@
 import base64
 import re
+import socket
 import time
 import xmltodict
 
@@ -11,7 +12,10 @@ class Plugin_OBJ():
     def __init__(self, plugin_utils):
         self.plugin_utils = plugin_utils
 
-        count = int(self.plugin_utils.config.dict["fhdhr"]["tuner_count"])
+        self.tuners = self.plugin_utils.config.dict["ceton"]["tuners"]
+        self.stream_method = self.plugin_utils.config.dict["ceton"]["stream_method"]
+
+        count = int(self.plugin_utils.config.dict["ceton"]["tuners"])
         for i in range(count):
             self.startstop_ceton_tuner(i, 0)
 
@@ -41,7 +45,7 @@ class Plugin_OBJ():
 
     def get_ceton_tuner_status(self, chandict):
         found = 0
-        count = int(self.plugin_utils.config.dict["fhdhr"]["tuner_count"])
+        count = int(self.plugin_utils.config.dict["ceton"]["tuners"])
         for instance in range(count):
 
             result = self.get_ceton_getvar(instance, "TransportState")
@@ -88,7 +92,7 @@ class Plugin_OBJ():
                           '/channel_request.cgi'
                           )
         tuneChannel_data = {"instance_id": instance,
-                            "channel": chandict['number']}
+                            "channel": chandict['origin_number']}
 
         try:
             tuneChannelUrlReq = self.plugin_utils.web.session.post(tuneChannelUrl, tuneChannel_data)
@@ -181,8 +185,12 @@ class Plugin_OBJ():
         self.get_ceton_getvar(instance, "CopyProtectionStatus")
 
         if tuned:
-            self.plugin_utils.logger.info('Initiate streaming channel %s from Ceton tuner#: %s ' % (chandict['number'], instance))
-            streamurl = "udp://127.0.0.1:%s" % port
+            self.plugin_utils.logger.info('Initiate streaming channel %s from Ceton tuner#: %s ' % (chandict['origin_number'], instance))
+            if self.stream_method == "ffmpeg": 
+                streamurl = "udp://127.0.0.1:%s" % port
+            else:
+                streamurl = "udp://127.0.0.1:%s" % port
+                self.direct_stream(instance, port)
         else:
             streamurl = None
 
@@ -195,3 +203,65 @@ class Plugin_OBJ():
         self.startstop_ceton_tuner(instance, 0)
 
         return
+
+    def open_socket(self, port):
+        self.plugin_utils.logger.info('Opening socket on UDP port %s' % port)
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("", port))
+            sock.settimeout(5)
+        except socket.error as e:
+            self.plugin_utils.logger.info('Failed to open socket, will retry...')
+            time.sleep(5)
+            return self.open_socket(port)
+
+    def direct_stream(self, instance, port):
+        self.plugin_utils.logger.info('Attempting to direct stream...')
+        sock = self.open_socket(port)
+
+        self.bytes_per_read = int(self.plugin_utils.config.dict["streaming"]["bytes_per_read"])
+
+        def generate():
+            chunk_counter = 1
+            try:
+                while True: 
+                    chunk = bytearray(b" " * self.bytes_per_read)
+                    size = sock.recv_into(chunk)
+                    buf = chunk[:size]
+
+                    header_size = 12 + 4 * (buf[0] & 16)
+
+                    chunk = buf[header_size:]
+                    chunk_size = int(sys.getsizeof(chunk))
+                    self.plugin_utils.logger.info("Passing Through Chunk #%s with size %s" % (chunk_counter, chunk_size))
+
+                    yield chunk
+                    self.tuner.add_downloaded_size(chunk_size)
+
+                    chunk_counter += 1
+
+                self.plugin_utils.logger.info("Connection Closed: Tuner Lock Removed")
+
+            except GeneratorExit:
+                self.plugin_utils.logger.info("Connection Closed.")
+            except Exception as e:
+                self.plugin_utils.logger.info("Connection Closed: %s" % e)
+            finally:
+                self.plugin_utils.logger.info("Connection Closed: Tuner Lock Removed")
+                self.close_stream(instance, "")
+                # raise TunerError("806 - Tune Failed")
+
+        return generate()
+
+
+
+
+
+
+
+
+
+
+
+
